@@ -1,0 +1,180 @@
+import re
+import requests
+import pandas as pd
+from lxml import etree as et
+
+'''
+主要使用lxml库和re库对字符串进行处理
+'''
+
+def extract(pattern, inf): #正则化提取非标签数据
+    inf = re.split(pattern, inf)
+    inf = [x for x in inf if x.strip()]  # 去除多余空格
+    return inf
+
+def to_string(lxml_etree_Element): # 简化代码
+    string = et.tostring(lxml_etree_Element, encoding='utf-8').decode('utf-8')
+    return string
+
+def doubanTop250(URL):
+    headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.8',
+        'Cache-Control': 'max-age=0',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36',
+        'Connection': 'keep-alive',
+        'Referer': 'https://movie.douban.com/'}
+    url = URL
+    response = requests.get(url=url, headers=headers)
+    html = et.HTML(response.text)
+    li_list = html.xpath('//div/ol/li')
+    movie_set = []
+    for li in li_list:
+        inf = li.xpath('.//div[@class="info"]')[0]
+
+        #name
+        name_list = inf.xpath('./div[@class="hd"]/a/span')
+
+        names = []     #影片一般有多个名字
+        for name in name_list:
+            name = to_string(name)
+            pattern = r'<.*?>|/|\n|\xa0' #正则匹配，分割字符串
+            name = re.split(pattern, name)
+            name = [x for x in name if x.strip()] #去除多余空格
+            for i in name:
+                names.append(i)
+
+        #time, director, actor
+        list = to_string(inf.xpath('./div[@class="bd"]/p')[0])
+        list = extract(r'<.*?>|/|\n|                            |\xa0',list)
+        p1 = r'^导演:'  #寻找对象都在一个列表中，使用正则匹配进行寻找
+        p2 = r'^主演:'
+        p3 = r'\d{4}'
+        for i in list:
+            if re.match(p1, i):
+                director = i.split(': ')[1]
+            if re.match(p2, i):
+                actor = i.split(': ')[1]
+            if re.match(p3, i):
+                time = i
+                break
+
+         #score, number
+        score = to_string(inf.xpath('.//div[@class="star"]/span')[1])
+        score = re.search('\d\.\d', score).group()
+        number = to_string(inf.xpath('.//div[@class="star"]/span')[3])
+        number = re.search('\d+', number).group()
+
+         #url
+        url = inf.xpath('./div[@class="hd"]/a/@href')[0]
+
+         #存入字典
+        info = {'片名': names,
+                '上映时间': time,
+                '导演': director,
+                '主演': actor,
+                '评分': score,
+                '参评人数': number,
+                '详情url': url}
+
+        movie_set.append(info)
+    return movie_set
+def movie_details(URL):
+    headers = {
+
+        "User-Agent": 'Mozilla/5.0 (Windows NT 6.1; WOW64)AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.3741.400 QQBrowser/10.5.3863.400'
+               }
+    url = URL
+    response = requests.get(url=url, headers=headers)
+    html = et.HTML(response.text)
+
+     # picture address
+    info0 = html.xpath('//div[@id="mainpic"]//img/@src')
+    pic_address = info0[0]
+
+     # director, writer, actor
+    info1 = html.xpath('//div[@id="info"]//span[@class="attrs"]')
+    for i in range(3):
+        inf = to_string(info1[i])
+        inf = extract(r'<.*?>|/', inf)
+        if i == 0:
+            director = inf
+        if i == 1:
+            writer = inf
+        if i == 2:
+            actor = inf
+      # type, country, language
+    types = []
+    info2 = html.xpath('//div[@id="info"]//span[@property="v:genre"]')
+    for inf in info2:
+        inf = to_string(inf)
+        inf = extract(r'<.*?>|/', inf)
+        types.append(inf[0])
+
+    info3 = html.xpath('//div[@id="info"]//span[@class="pl"]')
+    for inf in info3:
+        inf = to_string(inf)
+        if re.match(r'<.*?>制片国家/地区', inf):
+            country = extract(r'<.*?>|:', inf)[1]
+        elif re.match(r'<.*?>语言', inf):
+            language = extract(r'<.*?>|:', inf)[1]
+
+     # time, lenth
+    time, lenth = [], []
+    info4 = html.xpath('//div[@id="info"]//span[@property="v:initialReleaseDate"]')
+    for inf in info4:
+        inf = to_string(inf)
+        inf = extract(r'<.*?>|/', inf)
+        time.append(inf[0])
+    info5 = html.xpath('//div[@id="info"]//span[@property="v:runtime"]')
+    for inf in info5:
+        inf = to_string(inf)
+        inf = extract(r'<.*?>|/| ', inf)
+        lenth.append(inf[0])
+     # intro
+    intro = ''
+    info6 = html.xpath('//div[@class="related-info"]//span[@property="v:summary"]')
+    inf = to_string(info6[0])
+    inf = extract(r'<.*?>|\u3000|\n', inf)
+    for part in inf:
+        intro += part
+
+     # name
+    info7 = html.xpath('//h1/span[@property="v:itemreviewed"]')
+    for inf in info7:
+        inf = to_string(inf)
+        inf = extract(r'<.*?>| ', inf)
+        name = inf
+
+    # 存入字典
+    details = {'影片名': name,
+               '图片url': pic_address,
+               '导演': director,
+               '编剧': writer,
+               '主演': actor,
+               '类型': types,
+               '国家': country,
+               '语言': language,
+               '上映时间': time,
+               '片长': lenth,
+               '简介': intro}
+    return details
+if __name__ == "__main__":
+    url ='https://movie.douban.com/top250'
+    movie_set = doubanTop250(url)
+
+    # 作业一展示(运行请把引号删除)
+    """
+    for i in range(len(movie_set)):
+      print('\n'+'第', i+1, '名')
+      print(movie_set[i])
+      print('-' * 100 + '\n')
+    """
+
+    #作业二展示(运行请把引号删除)
+    """    
+    detail_set = []
+    url_df = pd.DataFrame(movie_set)['详情url']
+    for url in url_df:
+        print(movie_details(url))
+    """
