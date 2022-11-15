@@ -1,0 +1,67 @@
+import csv
+import requests
+import time
+from bs4 import BeautifulSoup
+
+def spider_weather(): # 爬取明天预测气温
+     # 华北地区
+    url = 'http://www.weather.com.cn/textFC/hb.shtml'
+    headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36'
+              }
+    response = requests.get(url, headers=headers)
+    text = response.content.decode('utf-8')
+    soups = BeautifulSoup(text, 'lxml').select(
+        'body > div.lqcontentBoxH > div.contentboxTab > div > div > div.hanml > div:nth-child(2)')[0]
+    soups = BeautifulSoup(str(soups), 'lxml').find_all('div', attrs={'class': 'conMidtab2'})
+    n = 1 # 计数
+    for bs in soups:
+        bs = BeautifulSoup(str(bs), 'lxml')
+        Temps = []
+        # 省/市
+        inf = bs.select('div:nth-child(1)')[0]
+        province_inf = BeautifulSoup(str(inf), 'lxml').find('td', attrs={'class': "rowsPan", 'width': '74'}).contents
+        province = province_inf[1].string
+        # 城市,气温
+        citys = []
+        H_temp = []  # 最高气温
+        L_temp = []  # 最低气温
+
+        inf = bs.select('div:nth-child(1) > table ')
+        city_inf = BeautifulSoup(str(inf), 'lxml').find_all('td', attrs={'height': "23", 'width': "83"})
+        H_temp_inf = BeautifulSoup(str(inf), 'lxml').find_all('td', attrs={'width': "92"})
+        L_temp_inf = BeautifulSoup(str(inf), 'lxml').find_all('td', attrs={'width': "86"})
+
+        # 存入列表
+        for i in city_inf:
+            citys.append(i.find('a').string)
+        for i in H_temp_inf:
+            H_temp.append(i.string)
+        H_temp.pop(0)
+        for i in L_temp_inf:
+            L_temp.append(i.string)
+        L_temp.pop(0)
+
+        # 转化为字典
+        for i in range(len(citys)):
+            dic = {
+                '省/市': province,
+                '城市': citys[i],
+                '最高温度': H_temp[i],
+                '最低温度': L_temp[i]
+            }
+            Temps.append(dic)
+        print('成功爬取城市',n)
+
+         # 写入文件
+        headers = ['省/市','城市','最高温度','最低温度']
+        with open('temp.csv', 'a', newline='') as f:
+            writer = csv.DictWriter(f, headers)
+            writer.writeheader()
+            writer.writerows(Temps)
+        print('写入成功')
+        print('-' * 50)
+        n += 1
+        time.sleep(1)
+if __name__== '__main__':
+    spider_weather()
