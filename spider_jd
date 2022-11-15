@@ -1,0 +1,44 @@
+import csv
+import json
+import requests
+import re
+import time
+def spider_jd(URL,i): #爬取商品评论数
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36'
+    }
+    url = URL
+    response = requests.get(url=url, headers=headers)
+     # 清洗json字符串
+    text = re.search('\[.+]', response.text).group()
+    text = re.sub(r'"images":\[.+?],|"replies":\[\{.+?}}],|"extMap":\{.+?},|"afterUserComment":\{.+?\{.+?}.+?},', '', text)
+    text = re.findall('\{.+?}', text)
+
+     # 提取目标信息
+    values_list = []
+    for json_str in text:
+        if re.search('"guid"', json_str):
+            dic = json.loads(json_str)
+            value = {
+                     '用户名': dic['nickname'],
+                     '评论时间': dic['creationTime'],
+                     '评价内容': dic['content'],
+                     '评分': dic['score']
+                     }
+            values_list.append(value)
+    print('已爬取第%i页'%i)
+    print(values_list)
+     # 追加写入csv文件
+    headers = ['用户名', '评论时间', '评价内容', '评分']
+    with open('comment.csv', 'a', newline='') as f:
+        writer = csv.DictWriter(f, headers)
+        writer.writeheader()
+        writer.writerows(values_list)
+    time.sleep(1)
+    return
+if __name__ == '__main__':
+    # 目标商品:《人类简史》书籍 因为评论只有两页，所以只爬取两页评论
+    URL = ['https://club.jd.com/comment/productPageComments.action?callback=fetchJSON_comment98&productId=10032222656664&score=0&sortType=5&page=0&pageSize=10&isShadowSku=0&rid=0&fold=1',
+           'https://club.jd.com/comment/productPageComments.action?callback=fetchJSON_comment98&productId=10032222656664&score=0&sortType=5&page=1&pageSize=10&isShadowSku=0&rid=0&fold=1']
+    for i in range(len(URL)):
+        spider_jd(URL[i], i+1)
